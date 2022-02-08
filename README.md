@@ -7,7 +7,7 @@ Spring 2022 <br />
 An introduction to some commonly used data mining and statistical learning algorithms such as K-nearest neighbor (KNN) algorithm, linear methods for regression and classification, tree-based methods, ensemble methods, support vector machine, neural networks, and Kmeans clustering algorithm. This course emphasizes on understanding the theoretical and statistical aspects of the above-mentioned data mining algorithms as well as implementation of these algorithms with data examples using a statistical software (e.g., R, Python, etc.)
 
 **Course Texbooks**
-https://www.statlearning.com/
+https://www.statlearning.com/ <br />
 https://hastie.su.domains/ElemStatLearn/
 
 **Course Outline**
