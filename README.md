@@ -1,5 +1,5 @@
 # GeorgiaTech-ISyE7406 <br />
-Course Title: Data Mining &amp; Statistical Learning <br />
+**Course Title: Data Mining &amp; Statistical Learning** <br />
 Georgia Institute of Technology: Master of Science, Analytics & Data Science <br />
 Spring 2022 <br />
 
