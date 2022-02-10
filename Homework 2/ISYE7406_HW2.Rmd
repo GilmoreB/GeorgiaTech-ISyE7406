@@ -1,0 +1,423 @@
+---
+title: "ISYE 7406 - HW #2 - Variable Selection"
+output:
+  word_document: default
+  html_notebook: default
+---
+****TOPIC: VARIABLE SELECTION***
+
+Load Libraries.
+```{r}
+library(leaps) #subset model
+library(MASS) #ridge
+library(lars) #LASSO
+library(pls)  #PCA
+library(car)   #scatterplot
+library(pastecs) #stat.desc
+```
+
+Read in Data.
+```{r}
+#read in data
+data0 <- read.csv("C:/Users/Britt/OneDrive/School/Georgia Tech Masters/4_Spring_2022/ISYE 7406_Data Mining and Statistical Learning/Homework/HW2_DataFile_Fat.csv", header= TRUE, sep = ",")
+
+```
+
+Split Data: Training & Testing
+(90/10, per HW instructions so we can use explicitly observations)
+```{r}
+#randomly select testing data.
+n = dim(data0)[1] #total observations
+n1 = round(n/10) #num randomly selected for test dataset
+
+flag = c(1, 21, 22, 57, 70, 88, 91, 94, 121, 127, 149, 151, 159, 162,
+164, 177, 179, 194, 206, 214, 215, 221, 240, 241, 243)
+
+#split data.
+dataTrain = data0[-flag,] #exclude randomly selected obs 
+dataTest = data0[flag,] #only include randomly selected obs 
+
+#view training and testing data.
+dim(dataTrain) #training data: 227 x 18
+residuals(dataTest) #testing data: 25 x 18
+```
+Exploratory Analysis on Training Data.
+```{r}
+#exploration, visualization, structure of data !!!!!!!!!!
+boxplot(data0)
+summary(data0)
+scatterplotMatrix(data0)
+cor(data0)
+attach(data0)
+summary(brozek)
+stat.desc(data0)
+
+#linear model with selected variables 
+lm0 <- lm(brozek ~ siri + weight + density + free + thigh + knee + biceps, data = data0)
+summary(lm0)
+plot(lm0)
+
+```
+
+Create Variables to Store Training & Testing Errors
+```{r}
+MSETest <- NULL
+```
+
+***Create Models Using Training Data***
+***Predict Using Testing Data***
+***Report Error for Training & Testing Set***
+
+Model 1: Linear Regression l - All Variables XXX
+```{r}
+#linear regression model 
+mod1 <- lm(brozek ~., data = dataTrain)
+summary(mod1)
+plot(mod1)
+
+#prediction model
+pred1 <- predict(mod1, dataTest[,2:18]) #exclude response variable
+
+#testing error
+MSEMod1Test <- mean((pred1 - dataTest[,1])^2) #predict response var
+MSETest <- c(MSETest, MSEMod1Test)
+
+#print testing error
+MSEMod1Test
+```
+
+MODEL 2: Linear Regression - Best Subset of k = 5  XXX
+*Model selection via exhaustive search forward, backward, etc.*
+```{r}
+#Create subset model 
+subMod0 <- regsubsets(brozek ~., data = dataTrain, nbest = 120, method = c("exhaustive"), really.big = TRUE)
+
+subModel <- summary(subMod0)$which
+subModelSize <- as.numeric(attr(subModel, "dimnames")[[1]])
+subModelRSS <- summary(subMod0)$rss
+#plot()
+
+#view
+head(subModelRSS)
+
+#plot error vs k size (e.g., k = 1, 2, 3, etc.)
+plot(subModelSize, subModelRSS)
+
+#best subset when k = 5 (per HW instructions)
+kFive <- which(subModelSize == 5)
+flagFive <- kFive[which.min(subModelRSS[kFive])]
+
+#manually look at the selected variables/model (T = selected)
+subModel[flagFive,]
+
+#fit model with selected variables (above step)
+mod2 <- lm(brozek ~ siri + density + thigh + knee + forearm, data = dataTrain)
+
+#prediction model
+pred2 <- predict(mod2, dataTest[,2:18])
+
+#model testing error
+MSEMod2Test <- mean((pred2 - dataTest[,1])^2)
+MSETest <- c(MSETest, MSEMod2Test)
+
+#testing errors
+MSETest
+```
+
+MODEL 3: Linear Regression - Stepwise AIC XXX
+*Minimize AIC criterion*
+```{r}
+#create linear model
+mod3 <- step(mod1)
+mod3
+
+#coefficients of step model
+round(coef(mod3), 3)
+summary(mod3)
+
+#prediction model
+pred3 <- predict(mod3, dataTest[,2:18])
+
+#model testing error
+MSEMod3Test <- mean((pred3 - dataTest[,1])^2)
+MSETest <- c(MSETest, MSEMod3Test)
+
+#testing errors
+MSETest
+
+```
+
+MODEL 4: Ridge Regression XXX
+```{r}
+#ridge regression model
+mod4 <- lm.ridge(brozek ~., data = dataTrain, lambda = seq(0, 100, 0.001)) #0 to 100 in increments of 0.001
+
+#plot diff lambda values
+matplot(mod4$lambda, t(mod4$coef), type="l", lty=1,
+        xlab=expression(lambda), ylab=expression(hat(beta)))
+
+#find optimal value of lambda for model
+select(mod4)
+optimalLambda <- which.min(mod4$GCV)  #smallest value of GCV  at 0.003
+ridgeCoeff <- mod4$coef[,optimalLambda]
+
+#intercept
+ridgeIntercept <- mod4$ym - sum(mod4$xm * (ridgeCoeff / mod4$scales))
+
+#prediction model
+pred4 <- scale(dataTest[,2:18], center = F, scale = mod4$scales)%*%
+  ridgeCoeff + ridgeIntercept
+
+#testing error
+MSEmod4test <-  mean((pred4 - dataTest[,1])^2)
+MSETest <- c(MSETest, MSEmod4test)
+
+#print testing error
+MSETest
+```
+
+MODEL 5: LASSO 
+```{r}
+#create LASSO model
+mod5 <- lars(as.matrix(dataTrain[,2:18]), dataTrain[,1], type = "lasso", trace = TRUE)
+
+#plot LASSO model
+plot(mod5)
+
+#optimal lambda which min Mallows cp criterion
+cp1 <- summary(mod5)$Cp
+index2 <- which.min(cp1)
+mod5Lambda <- mod5$lambda[index2]
+
+#coefficients 
+mod5$beta[index2,]
+mod5Lambda <- mod5$lambda[index2]
+
+coefMod5 <- predict(mod5,as.matrix(rbind(rep.int(0,17),rep.int(1,17))),s=mod5Lambda, type="fit", mode="lambda")
+
+round(c(coefMod5$fit[1],coef(mod5)[index2,]),4)
+
+#prediction model
+pred5 <- predict(mod5, dataTest[,-1], s=mod5Lambda, type="fit",mode="lambda")
+
+yhat5 <- pred5$fit
+
+#testing error
+MSEmod5test <- mean( (yhat5- dataTest$brozek)^2)
+MSETest <- c(MSETest, MSEmod5test)
+
+#print training & testing errors
+MSETest
+```
+MODEL 6: Principal Component Regression
+```{r}
+#create PC model
+mod6 <- pcr(brozek ~., data = dataTrain, validation = "CV")
+
+#plot R2 and error values by #components
+#"manual" component selection method
+validationplot(mod6)
+validationplot(mod6, val.type = "R2") #~3-4 = optimal for manual
+summary(mod6)
+
+#auto-component selection method == 17
+optimalComp <- which.min(mod6$validation$adj) #17 = optimal for auto
+
+#predict - using optimal PC number (from above)
+ypred6test <- predict(mod6, ncomp = optimalComp, newdata = dataTest[2:18])
+
+#testing error
+MSEmod6test <- mean( (ypred6test - dataTest$brozek)^2)
+
+MSETest <- c(MSETest, MSEmod6test)
+
+#print testing error
+MSETest
+```
+
+MODEL 7: Partial Least Squares
+```{r}
+#create partial LS model
+mod7 <- plsr(brozek ~., data = dataTrain, validation = "CV")
+
+#auto-select optimal features ; optimal val = 17
+mod7OptimalComp <-which.min(mod7$validation$adj)
+
+#print(mod7OptimalComp)
+
+
+#prediction model - using optimal vars (17, from above)
+ypred7test <- predict(mod7, ncomp = mod7OptimalComp, newdata = dataTest[2:18])
+
+#testing error
+MSEmod7test <- mean( (ypred7test - dataTest$brozek)^2)
+
+MSETest <- c(MSETest, MSEmod7test)
+
+#print training and testing errors
+MSETest
+
+```
+***Monet Carlo Cross-Validation***
+
+Loop through each one of the 7-models and take average of the testing error. 
+
+At each loop, 25-data points are randomly selected as the testing set. 
+```{r}
+set.seed(1111)
+fullData = rbind(dataTrain, dataTest)
+n1 = 227 #dim of training data
+n2 = 25 #dim of testing data
+n = dim(fullData)[1]
+
+B = 100
+TEALL=NULL
+
+for (b in 1:B){
+    
+  flag = sort(sample(1:n, n1))
+  fat1train = data0[-flag,]
+  fat1test = data0[flag, ]
+  
+  ######1 - LINEAR REGRESSION------------------------------
+  mod1 <- lm(brozek ~., data = dataTrain)
+  pred1 <- predict(mod1, dataTest[,2:18]) #exclude response variable
+  MSE2mod1 <- mean((pred1 - dataTest[,1])^2) #predict response var
+
+  
+  ####### 2 - PARTIAL SUBSET, k = 5-------------------------
+  library(leaps);
+  #Create subset model 
+  subMod0 <- regsubsets(brozek ~., data = dataTrain, nbest = 120, method = c("exhaustive"), really.big = TRUE)
+  subModel <- summary(subMod0)$which
+  subModelSize <- as.numeric(attr(subModel, "dimnames")[[1]])
+  subModelRSS <- summary(subMod0)$rss
+  #plot error vs k size (e.g., k = 1, 2, 3, etc.)
+  #plot(subModelSize, subModelRSS)
+  #best subset when k = 5 (per HW instructions)
+  kFive <- which(subModelSize == 5)
+  flagFive <- kFive[which.min(subModelRSS[kFive])]
+  #manually look at the selected variables/model (T = selected)
+  subModel[flagFive,]
+  #fit model with selected variables (above step)
+  mod2 <- lm(brozek ~ siri + density + thigh + knee + forearm, data = dataTrain)
+  #prediction model
+  pred2 <- predict(mod2, dataTest[,2:18])
+  #model testing error
+  MSE2mod2 <- mean((pred2 - dataTest[,1])^2)
+  
+  ###3 STEPWISE AIC------------------------------------------
+  #create linear model
+  mod3 <- step(mod1)
+  #coefficients of step model
+  round(coef(mod3), 3)
+  #prediction model
+  pred3 <- predict(mod3, dataTest[,2:18])
+  #model testing error
+  MSE2mod3 <- mean((pred3 - dataTest[,1])^2)
+  
+  ####4 - RIDGE----------------------------------------------
+  library(MASS)
+  #ridge regression model
+  mod4 <- lm.ridge(brozek ~., data = dataTrain, lambda = seq(0, 100, 0.001)) #0 to 100 in increments of 0.001
+  #plot diff lambda values
+  matplot(mod4$lambda, t(mod4$coef), type="l", lty=1,
+          xlab=expression(lambda), ylab=expression(hat(beta)))
+  #find optimal value of lambda for model
+  select(mod4)
+  optimalLambda <- which.min(mod4$GCV)  #smallest value of GCV  at 0.003
+  ridgeCoeff <- mod4$coef[,optimalLambda]
+  #intercept
+  ridgeIntercept <- mod4$ym - sum(mod4$xm * (ridgeCoeff / mod4$scales))
+  #prediction model
+  pred4 <- scale(dataTest[,2:18], center = F, scale = mod4$scales)%*%
+    ridgeCoeff + ridgeIntercept
+  #testing error
+  MSE2mod4<-  mean((pred4 - dataTest[,1])^2)
+  
+  ###5 - LASSO----------------------------------------------
+  #install.packages('lars')
+  library(lars)
+  #create LASSO model
+  mod5 <- lars(as.matrix(dataTrain[,2:18]), dataTrain[,1], type = "lasso", trace = TRUE)
+  #optimal lambda which min Mallows cp criterion
+  cp1 <- summary(mod5)$Cp
+  index2 <- which.min(cp1)
+  mod5Lambda <- mod5$lambda[index2]
+  #coefficients 
+  mod5$beta[index2,]
+  mod5Lambda <- mod5$lambda[index2]
+  
+  coefMod5 <- predict(mod5,as.matrix(rbind(rep.int(0,17),rep.int(1,17))),s=mod5Lambda, type="fit", mode="lambda")
+  
+  round(c(coefMod5$fit[1],coef(mod5)[index2,]),4)
+  #prediction model
+  pred5 <- predict(mod5, dataTest[,-1], s=mod5Lambda, type="fit",mode="lambda")
+  
+  yhat5 <- pred5$fit
+  #testing error
+  MSE2mod5 <- mean( (yhat5- dataTest$brozek)^2)
+  
+  ####5 - PRINCIPAL COMPONENT REGRESSION ------------------
+  library(pls)
+  #create PC model
+  mod6 <- pcr(brozek ~., data = dataTrain, validation = "CV")
+  #plot R2 and error values by #components
+  #"manual" component selection method
+  validationplot(mod6)
+  validationplot(mod6, val.type = "R2") #~3-4 = optimal for manual
+  summary(mod6)
+  #auto-component selection method == 17
+  optimalComp <- which.min(mod6$validation$adj) #17 = optimal for auto
+  #predict - using optimal PC number (from above)
+  ypred6test <- predict(mod6, ncomp = optimalComp, newdata = dataTest[2:18])
+  #testing error
+  MSE2mod6 <- mean( (ypred6test - dataTest$brozek)^2)
+  
+  #####7 - PARTIAL LEAST SQUARES---------------------------
+  #create partial LS model
+  mod7 <- plsr(brozek ~., data = dataTrain, validation = "CV")
+  #auto-select optimal features ; optimal val = 17
+  mod7OptimalComp <-which.min(mod7$validation$adj)
+  #prediction model - using optimal vars (17, from above)
+  ypred7test <- predict(mod7, ncomp = mod7OptimalComp, newdata = dataTest[2:18])
+  #testing error
+  MSE2mod7<- mean( (ypred7test - dataTest$brozek)^2)
+  
+  TEALL = rbind(TEALL, cbind(MSE2mod1, MSE2mod2, MSE2mod3, MSE2mod4,  MSE2mod5, MSE2mod6, MSE2mod7))
+}
+
+dim(TEALL)
+colnames(TEALL) <- c("Linear Reg", "Subset", "Stepwise", "Ridge", "LASSO", "PC", "Partial Least Sqr")
+round(apply(TEALL, 2, mean),4)
+#round(apply(TEALL, 2, var),4)
+
+```
+***Cross-Validation Difference Testing***
+
+Given that LASSO had lowest average testing error (0.0032), we will consider this the best performing model. Here, we will test if there is a significant difference between LASSO and all other models (e.g., does it really perform better than the other models).
+
+Null hypothesis: there is no difference between the models
+```{r}
+#two-tailed t-test
+T1=t.test(TEALL[,5],TEALL[,7],paired=T)
+T2=t.test(TEALL[,5],TEALL[,6],paired=T)
+T3=t.test(TEALL[,5],TEALL[,4],paired=T)
+T4=t.test(TEALL[,5],TEALL[,3],paired=T)
+T5=t.test(TEALL[,5],TEALL[,2],paired=T)
+T6=t.test(TEALL[,5],TEALL[,1],paired=T)
+
+#two-tailed Wilcoxon signed-rank test
+W1=wilcox.test(TEALL[,5],TEALL[,7],paired=T)
+W2=wilcox.test(TEALL[,5],TEALL[,6],paired=T)
+W3=wilcox.test(TEALL[,5],TEALL[,4],paired=T)
+W4=wilcox.test(TEALL[,5],TEALL[,3],paired=T)
+W5=wilcox.test(TEALL[,5],TEALL[,2],paired=T)
+W6=wilcox.test(TEALL[,5],TEALL[,1],paired=T)
+
+c(T6$p.value,T5$p.value,T4$p.value,T3$p.value,T2$p.value,T1$p.value)
+c(W6$p.value,W5$p.value,W4$p.value,W3$p.value,W2$p.value,W1$p.value)
+```
+
+
+
