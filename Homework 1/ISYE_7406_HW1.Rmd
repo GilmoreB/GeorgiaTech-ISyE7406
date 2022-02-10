@@ -1,0 +1,147 @@
+---
+title: "ISYE 7406 - Homework 1"
+output: html_notebook
+
+---
+***TOPIC: XXXXX ***
+
+Install Libraries
+```{r}
+install.packages(corrplot)
+require(corrplot)
+library(lares)
+library(psych)
+library(class)
+```
+
+***#1 - Exploratory Data Analysis of Training Data***
+```{r}
+#---------------------read in data----------------------
+ziptrain <- read.table(file = "./ISYE7406_HW1_zip.train.csv", sep = ',')
+dim(ziptrain)
+
+#subset of response variable: 2,7
+ziptrain27 <- subset(ziptrain, ziptrain[,1] == 2 | ziptrain[,1] == 7)
+
+#---------------------exploratory analysis-----------------
+dim(ziptrain27) #1376 rows and 257 vars
+sum(ziptrain27[,1]==2)#731 of the 1376 == 2 classification 
+summary(ziptrain27)
+
+#---------------------correlation matrix--------------------
+corr <- round(cor(ziptrain27), 2)
+corr[which(abs(corr) > .75 & corr < 1, arr.ind = TRUE)]
+dat <- ziptrain27[, c(1, 2:75)]
+round(cor(dat),2)
+
+corr_cross(ziptrain27, max_pvalue = 0.05, top = 10)
+corr_var(ziptrain27, V1, top = 10)
+
+#---------------------pixel representation of row------------
+#looks at specified row, all columns except response (col 1)
+#put in specified row in a 16x16 matrix
+#code is graphing the image function
+#represents pixel images of handwritten # from zip codes
+rowindex = 10
+ziptrain27[rowindex, 1]
+xVal = t(matrix(data.matrix(ziptrain27[,-1])[rowindex,], byrow = TRUE, 16, 16)[16:1,])
+print(xVal)
+image(xVal, col = gray(0:1), axes = FALSE)
+```
+
+***#2 - Build Classification Rule***
+```{r}
+#---------------------linear model-----------------------
+lm0 <- lm(V1 ~ ., data = ziptrain27)
+summary(lm0)
+residuals(lm0)
+predict(lm0)
+plot(lm0)
+
+#predict Y0 to 2 and 7
+pred0.train <- predict.lm(lm0, ziptrain27[,-1])
+#if predict is 7 then prediction = True = 1 --> 2+5*1; else 0
+#7 = true = 1; 2 = false = 0
+#2+7/2 = 4.5
+y0pred.train <- 2+5*(pred0.train >= 4.5)
+mean(y0pred.train != ziptrain27[,1])
+
+#---------------------KNN----------------------------
+kk <- 1
+xnew <- ziptrain27[,-1] #response variable we are predicting
+ypred1.train <- knn(ziptrain27[,-1], xnew, ziptrain27[,1], k = kk)
+mean(ypred1.train != ziptrain27[,1])
+
+```
+***#3 - Testing Errors***
+```{r}
+#---------------------read test data----------------------------
+ziptest <- read.table(file = "./ISYE7406_HW1_zip.test.csv", sep = ',')
+#separate out 2,7 classification 
+ziptest27 <- subset(ziptest, ziptest[,1] == 2 | ziptest[,1] == 7)
+dim(ziptest27)  #345 rows and 257 vars
+
+#---------------------test error of KNN model--------------------
+xnew1 <- ziptest27[,-1]  #new x variables of the testing dataset
+kk <- 15
+ypred2.test <- knn(ziptrain27[,-1], xnew1, ziptrain27[,1], k = kk)
+mean(ypred2.test != ziptest27[,1]) #ziptest27[,1] = Y response of test data
+
+```
+
+***#4 - Cross-Validation***
+```{r}
+#---------------------combined training and test data------------
+zip27full = rbind(ziptrain27, ziptest27) #combine to a full data set
+n1 = 1376 #training set sample size
+n2= 345 #testing set sample size
+n = dim(zip27full)[1] #total sample size
+set.seed(1111) #set the seed for randomization
+
+#--------------Initialize the TE values for all models in B loops
+B = 100 #number of loops
+kkk <- c(0, 1,3,5,7, 9, 11, 13, 15)
+TRERR = NULL; #verage performance for training errors
+TEALL = NULL; #Final TE values for testing errors
+
+for (b in 1:B){
+  ##randomly select n1 obs as new training subset in each loop
+  flag <- sort(sample(1:n,n1))
+  zip27traintempset <- zip27full[flag, ]
+  zip27testtempset <- zip27full[-flag, ]
+  temptesterror <- NULL #temp test error of all 9 methods
+  
+  #linear regression
+  tempLRmod <- lm( V1 ~ . , data= zip27traintempset)
+  predLRtemp <- predict.lm(tempLRmod, zip27testtempset[,-1])
+  y1predLRtemp <- 2 + 5*(predLRtemp >= 4.5)
+  temptesterror <- mean( y1predLRtemp != zip27testtempset[,1])
+  
+  #8 KNN methods (iteration through different k vals)
+  xnew2temp <- zip27testtempset[,-1]
+  for (i in 1: 8){
+  kk <- kkk[i]
+  ypred2temp <- knn(zip27traintempset[,-1], xnew2temp, zip27traintempset[,1], k=kk)
+  temptesterror <- cbind( temptesterror, mean( ypred2temp != zip27testtempset[,1]))
+  }
+  TEALL <- rbind(TEALL, temptesterror)
+  }
+
+dim(TEALL)
+
+#---------------------rename columns---------------------------
+colnames(TEALL) <- c("linearRegression", "KNN1", "KNN3", "KNN5", "KNN7",
+"KNN9", "KNN11", "KNN13", "KNN15");
+
+#---------------------sample mean and sample variances for models---
+apply(TEALL, 2, mean)
+apply(TEALL, 2, var)
+
+#0 = linear regression model error--------------------------
+plot(kkk, apply(TEALL, 2, mean), ylab='CV Error')
+
+```
+`
+
+
+
