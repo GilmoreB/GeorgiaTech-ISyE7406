@@ -12,16 +12,3 @@ which are available from the book website: <www-stat.stanford.edu/ElemStatLearn>
 
 The detailed description can be found here: http://statweb.stanford.edu/~tibs/ElemStatLearn/datasets/zip.info.txt
 
-**Initial Data Exploration**
-
-![HW1_image1](https://user-images.githubusercontent.com/79668025/153067479-d3f5e4c5-e859-424d-9be1-02d0f891a695.png)
-
-**Pixel Representation of Row Data (row 5)**
-
-![HW1_image2](https://user-images.githubusercontent.com/79668025/153067586-a457c05f-cc80-4d6f-9e6b-1db208415af7.png)
-
-**Initial Linear Model - All Variables**
-
-![HW1_image3](https://user-images.githubusercontent.com/79668025/153068196-87ad4ff6-3ecf-4d76-ae7f-3b8562d77aaa.png)
-![HW1_image4](https://user-images.githubusercontent.com/79668025/153068230-1714e3d4-f14c-4b4e-9036-7c3f3dcbe7e4.png)
-
