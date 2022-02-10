@@ -1,3 +1,5 @@
+# Objective of Homework Assignment
+
 The purpose of this homework is to help you to be prepared to analyze datasets in your future studies and
 career. Since we are learning how to analyze the dataset, this HW (and other early HWs) will provide the
 detailed R codes and technical details. Hence, besides running these R codes or their extensions, we expect
