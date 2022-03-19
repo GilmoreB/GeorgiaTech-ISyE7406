@@ -1,0 +1,562 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+Definitions:
+- Dropout: drop out, expelled/tribunal, GED, incarcerated/DJJ, retained
+- Not Dropout: currently in school, graduated, home school, housebound, pending milestones, promoted,  summer school, transferred in system-school, transferred out of system
+- Binary: 0 = Dropout, 1 = Not Dropout
+
+#Import libraries
+```{r}
+library(pastecs) #stat.desc
+require(tidyr)
+require(dplyr)
+library(corrplot)
+library(lares)
+library(outliers)
+library(ggplot2)
+library(randomForest)
+library(fastDummies)
+library(ROCR)
+library(caret)
+#library(smotefamily)
+library(performanceEstimation) #smote
+
+```
+
+#Load data
+```{r}
+#load data
+data0 <- data.frame(read.csv("C:/Users/Britt/OneDrive/School/Georgia Tech Masters/4_Spring_2022/Practicum/4_CISData_Imputed_2Response.csv", header= TRUE, sep = ","))
+
+head(data0)
+summary(data0)
+dim(data0)
+
+#remove col num_gpa goals since all 0's
+data0 <- subset(data0, select = -num_gpa_goals)
+
+```
+
+Cast first 3-cols YEAR, RACE, COUNTY to factor
+```{r}
+data0 <- data0 %>% 
+  mutate_if(is.character, as.factor) %>%
+  mutate(outcome = as.factor(outcome)) %>%
+  mutate(Student_Support_Plan_Year = as.factor(Student_Support_Plan_Year))
+
+
+data0 <- dummy_cols(data0, select_columns = 'Contact_Race_Ethnicity', remove_selected_columns = TRUE)
+data0 <- dummy_cols(data0, select_columns = 'county', remove_selected_columns = TRUE)
+head(data0)
+dim(data0)
+
+```
+
+Scale & center Data
+```{r}
+#histogram of avg_eng_grade per scaling
+hist(data0$avg_eng_grade)
+
+#scale & center data
+data0[c(2:40)] <- scale(data0[c(2:40)], center = TRUE, scale = TRUE)
+head(data0)
+
+#histogram of avg_eng_grade post scaling
+hist(data0$avg_eng_grade)
+
+head(data0) 
+summary(data0)
+
+```
+
+Plot outcome values (e.g., binary split)
+```{r}
+barplot(prop.table(table(data0$outcome)), col = rainbow(2), ylim = c(0,1), main = "Outcome Distribution")
+
+#view split of outcome 
+table(data0$outcome)
+prop.table(table(data0$outcome)) #95% success, 5% fail
+```
+
+Initial Exploratory Analysis
+```{r}
+library(psych)
+
+#basic stats & data info
+str(data0)
+summary(data0)
+dim(data0)
+stat.desc(data0)
+
+```
+
+Plots
+```{r}
+
+hist(data0$avg_math_grade, main="Histogram of Avg Math Grade")
+hist(data0$avg_eng_grade, main="Histogram of Avg English Grade")
+hist(data0$avg_sci_grade, main="Histogram of Avg Science Grade")
+hist(data0$avg_soc_grade, main="Histogram of Avg Soc Grade")
+hist(data0$num_math_goals, main="Histogram of Num English Goals")
+hist(data0$num_attendance_goals, main="Histogram of Num Attend Goals")
+hist(data0$age_at_school_year_start, main="Histogram of Age")
+hist(data0$num_activities, main="Histogram of Num Activities")
+hist(data0$total_activity_time_minutes, main="Histogram of Total Activities Time (Min)")
+
+ggplot(data0, aes(x = avg_math_grade)) +
+  geom_density(aes(color = outcome))
+ facet_wrap(~outcome)
+
+ggplot(data0, aes(x = num_attendance_goals)) +
+  geom_density(aes(color = outcome))
+  facet_wrap(~outcome)
+
+ggplot(data0, aes(x = avg_math_grade)) +
+  geom_density() +
+  facet_wrap(~outcome)
+
+ggplot(data0, aes(x = num_attendance_goals)) +
+  geom_density() +
+  facet_wrap(~outcome)
+
+ggplot(data0, aes(x = age_at_school_year_start)) +
+  geom_density() +
+  facet_wrap(~outcome)
+
+ggplot(data0, aes(x = num_activities)) +
+  geom_density() +
+  facet_wrap(~outcome)
+
+ggplot(data0, aes(x = total_activity_time_minutes)) +
+  geom_density() +
+  facet_wrap(~outcome)
+
+ggplot(data0, aes(x = Contact_Race_Ethnicity)) +
+  geom_density() +
+  facet_wrap(~outcome)
+  
+ggplot(data0, aes(x = county)) +
+  geom_density() +
+  facet_wrap(~outcome)
+```
+
+
+#Outlier Detection
+```{r}
+#grubbs null hypoth: highest/lowest val NOT outlier
+#p<alph: null hypothesis rejecte
+
+#visual 
+boxplot(data0$num_activities, main = 'num_activities')
+hist(data0$num_activities)
+grubbs.test(data0$num_activities)
+
+boxplot(data0$num_tiered_support_activities, main = 'num_tiered_support_activ')
+hist(data0$num_tiered_support_activities)
+grubbs.test(data0$num_tiered_support_activities)
+
+boxplot(data0$num_tier_1, main = 'num_tier1_goals')
+hist(data0$num_tier_1)
+grubbs.test(data0$num_tier_1)
+
+boxplot(data0$num_tier_2, main = 'num_tier2_goals')
+hist(data0$num_tier_2)
+grubbs.test(data0$num_tier_2)
+
+boxplot(data0$num_tier_3, main = 'num_tier3_goals')
+hist(data0$num_tier_3)
+grubbs.test(data0$num_tier_3)
+
+boxplot(data0$num_academic_goals, main = 'num_academic_goals')
+hist(data0$num_academic_goals)
+grubbs.test(data0$num_academic_goals)
+
+boxplot(data0$num_eng_goals, main = 'num_eng_goals')
+hist(data0$num_eng_goals)
+grubbs.test(data0$num_eng_goals)
+
+boxplot(data0$num_math_goals, main = 'num_math_goals')
+hist(data0$num_math_goals)
+grubbs.test(data0$num_math_goals)
+
+boxplot(data0$num_sci_goals, main = 'num_sci_goals')
+hist(data0$num_sci_goals)
+grubbs.test(data0$num_sci_goals)
+
+boxplot(data0$num_soc_goals, main = 'num_soc_goals')
+hist(data0$num_soc_goals)
+grubbs.test(data0$num_soc_goals)
+
+boxplot(data0$num_behavior_goals, main = 'num_behavior_goals')
+hist(data0$num_behavior_goals)
+grubbs.test(data0$num_behavior_goals)
+
+boxplot(data0$num_attendance_goals, main = 'num_attendance_goals')
+hist(data0$num_attendance_goals)
+grubbs.test(data0$num_attendance_goals)
+
+#------------------------------------------------------
+# #cooks distance
+# mod0 <- lm(outcome ~ ., data = data0)
+# summary(mod0)
+# plot(mod0)
+# 
+# cook <- cooks.distance(mod0)
+# plot(cook, pch = "*", cex = 2)
+# abline(h = 4*mean(cook, na.rm = T), col = "red")
+# text(x=1:length(cook)+1, y=cook, labels=ifelse(cook>4*mean(cook, na.rm=T),names(cook),""), col="red")  # add labels
+# 
+# #standard deviation outlier detection 
+# mean = mean(data0$num_activities);
+# std = sd(data0$num_activities);
+# tMin = mean - (3*std);
+# tMax = mean + (3*std);
+# data0$num_activities[which(data0$num_activities <tMin | data0$num_activities > tMax)];
+# 
+# mean = mean(data0$num_tiered_support_activities);
+# std = sd(data0$num_tiered_support_activities);
+# tMin = mean - (3*std);
+# tMax = mean + (3*std);
+# data0$num_tiered_support_activities[which(data0$num_tiered_support_activities <tMin | data0$num_tiered_support_activities > tMax)];
+
+```
+
+Measure Linear Correlation
+```{r}
+
+dim(data0)
+#correlation plot
+head(data0)
+
+covMatrix <- cov(data0[,2:26]) #excluding school id, year
+
+corMatrix <- cor(data0[,2:26])
+
+as.data.frame(apply(corMatrix, 2, function(x) ifelse (abs(x) >=0.55, round(x,3), "-")))
+
+# display top 10 couples of variables with highest & most significant correlations
+corr_cross(data0,max_pvalue = 0.05, top = 15)
+
+# display top 5 correlations
+corr_var(data0, outcome, top = 15)
+
+```
+
+Splits Data
+```{r}
+#Split data for training and testing
+testRows = sample(nrow(data0), 0.33*nrow(data0))
+testData = data0[testRows, ]
+trainData = data0[-testRows, ]
+
+#view training and testing set dims
+dim(trainData)
+dim(testData)
+
+head(trainData)
+summary(data0)
+```
+
+***Model1: Logistic Regression***
+
+Deviance: measure of model fit
+Coefficients: change in LOG-ODDS of the outcome for one unit increase in the predictor variable.
+    For every 1-unit change in avg_eng_grade, the log odds of success is increased by .06066
+    
+Logs Ratio: for a 1-unit increase in avg_eng_grade, the odds of being successful increase by a factor of 1.89
+
+Logistic Model #1 - *Pre Variable Selection*
+```{r}
+library(InformationValue)
+library(car)
+
+
+#fit logistic regression mode
+logMod1 <- glm(outcome ~., data = trainData, family = "binomial")
+
+#summary of model
+summary(logMod1)
+exp(coef(logMod1))#odds ratio
+confint.default(logMod1, level = 0.90)
+
+#prediction model of probabilities 
+logPred1 <- predict(logMod1, testData, type = "response")
+
+#calculate optima threshold for classification 
+opt <- optimalCutoff(testData$outcome, logPred1)[1]
+opt
+
+#change probability threshold to 0.50
+logPred1 <- ifelse(logPred1 > opt, 1, 0)
+
+#print confusion matrix
+table(testData$outcome, logPred1)
+confusionMatrix(testData$outcome, logPred1, threshold = opt)
+
+#print performance metrics 
+logMisClass <- mean(logPred1 != testData$outcome)
+print(paste('Accuracy:', 1 - logMisClass))
+print(paste('Sensiticity (+):', sensitivity(testData$outcome, logPred1, threshold = opt)))
+print(paste('Specificity (-):', specificity(testData$outcome, logPred1, threshold = opt)))
+print(paste('Misclassification:', misClassError(testData$outcome, logPred1, threshold = opt)))
+
+#calculate ROC and AUG vals
+ROCPred <- prediction(logPred1, testData$outcome) 
+ROCPerform <- performance(ROCPred, measure = "tpr", x.measure = "fpr")
+   
+auc <- performance(ROCPred, measure = "auc")
+auc <- auc@y.values[[1]]
+auc
+   
+#plot ROC & AUC
+plot(ROCPerform, colorize = TRUE, text.adj = c(-0.2, 1.7))
+auc <- round(auc, 4)
+legend(.6, .4, auc, title = "AUC", cex = 1)
+
+```
+
+Variable Selection - Stepwise
+```{r}
+library(MASS)
+logStepMod <- logMod1 %>% stepAIC(trace = FALSE)
+logStepMod$results
+summary(logStepMod)
+
+```
+
+Logistic Model #2 - *Post Variable Selection* 
+```{r}
+#summary of model
+summary(logStepMod)
+exp(coef(logStepMod))#odds ratio
+confint.default(logStepMod, level = 0.90)
+
+#prediction model of probabilities 
+logPred2 <- predict(logStepMod, testData, type = "response")
+
+#calculate optima threshold for classification 
+opt2 <- optimalCutoff(testData$outcome, logPred2)[1]
+opt2
+
+#change probability threshold to 0.50
+logPred2 <- ifelse(logPred2> opt2, 1, 0)
+
+#print confusion matrix
+table(testData$outcome, logPred2)
+confusionMatrix(testData$outcome, logPred2, threshold = opt2)
+
+#print performance metrics 
+logMisClass2 <- mean(logPred2 != testData$outcome)
+print(paste('Accuracy:', 1 - logMisClass2))
+print(paste('Sensiticity (+):', sensitivity(testData$outcome, logPred2, threshold = opt2)))
+print(paste('Specificity (-):', specificity(testData$outcome, logPred2, threshold = opt2)))
+print(paste('Misclassification:', misClassError(testData$outcome, logPred2, threshold = opt2)))
+
+#calculate ROC and AUG vals
+ROCPred2 <- prediction(logPred2, testData$outcome) 
+ROCPerform2 <- performance(ROCPred2, measure = "tpr", x.measure = "fpr")
+   
+auc2 <- performance(ROCPred2, measure = "auc")
+auc2 <- auc2@y.values[[1]]
+auc2
+   
+#plot ROC & AUC
+plot(ROCPerform2, colorize = TRUE, text.adj = c(-0.2, 1.7))
+auc2 <- round(auc2, 4)
+legend(.6, .4, auc2, title = "AUC", cex = 1)
+
+```
+
+AUTO 10-Fold Cross Validation Function POST Variable Selection
+```{r}
+#define control
+control <- trainControl(method = "cv", number = 10, savePredictions = TRUE)
+
+#fit model
+cvMod <- train(outcome ~ age_at_school_year_start + num_activities + 
+    num_activity_categories + num_tiered_support_activities + 
+    num_program_outcome_activities + num_goal_review_activities + 
+    num_grade_period_review_activities + num_academic_goals_achieved + 
+    num_behavior_goals_achieved + num_attendance_goals_achieved + 
+    num_sci_goals + total_activity_time_minutes + avg_eng_grade + 
+    avg_math_grade + avg_sci_grade + avg_soc_grade + Contact_Race_Ethnicity_Black + 
+    `Contact_Race_Ethnicity_Hispanic/Latino` + county_Clayton + 
+    county_Dekalb + county_Fulton, data = data0, method = "glm", family = "binomial", trControl = control)
+
+#predict results
+cvPred <- predict(cvMod, newdata=testData)
+
+#confusion matrix - measure accuracy
+caret::confusionMatrix(data = cvPred, testData$outcome)
+
+```
+
+
+SMOTE on Training Data POST Variable Selection 
+***Synthetic Minority Oversampling Technique***
+#https://stackoverflow.com/questions/67085791/package-to-do-smote-in-r
+```{r}
+#balance categories by over and under sampling using KNN
+smoteData<- smote(outcome~., trainData, perc.over = 11, k = 7, perc.under = 1) #5/7/1
+
+#show new split of categories before & after SMOTE
+table(trainData$outcome)
+table(smoteData$outcome)
+
+
+```
+
+Monte Carlo Cross-Validation POST Variable Selection + SMOTE
+```{r}
+#define empty vars to store accuracy measures for each loop
+Accuracy <- NULL
+Sensitivity <- NULL
+Specificity <- NULL
+Mis <- NULL
+
+B = 10
+
+#perform B loops 
+for(i in 1:B){
+  
+  testRows3 = sample(nrow(data0), 0.33*nrow(data0))
+  testData3 = data0[testRows3, ]
+  trainData3 = data0[-testRows3, ]
+  
+  trainData3<- smote(outcome~., trainData, perc.over =11, k = 7, perc.under = 1)
+
+  #fit model with vars selected from stepwise variable selection 
+  logMod3 <- glm(outcome ~ age_at_school_year_start + num_activities + 
+    num_activity_categories + num_tiered_support_activities + 
+    num_program_outcome_activities + num_goal_review_activities + 
+    num_grade_period_review_activities + num_academic_goals_achieved + 
+    num_behavior_goals_achieved + num_attendance_goals_achieved + 
+    num_sci_goals + total_activity_time_minutes + avg_eng_grade + 
+    avg_math_grade + avg_sci_grade + avg_soc_grade + Contact_Race_Ethnicity_Black + 
+    `Contact_Race_Ethnicity_Hispanic/Latino` + county_Clayton + 
+    county_Dekalb + county_Fulton, family = "binomial", data = trainData3)
+  
+  #predict results 
+  logPred3 <- predict(logStepMod, testData3, type = "response")
+
+  #calculate optima threshold for classification 
+  opt3 <- optimalCutoff(testData3$outcome, logPred3)[1]
+  opt3
+  
+  #change probability threshold to 0.50
+  logPred3 <- ifelse(logPred3> opt3, 1, 0)
+  
+  #print confusion matrix
+  print(table(testData3$outcome, logPred3))
+  confusionMatrix(testData3$outcome, logPred3, threshold = opt3)
+  
+  #store each loops performance metric
+  Missclass <- mean(logPred3 != testData3$outcome)
+  Accuracy[i] <- 1 - Missclass
+  Sensitivity[i] <- sensitivity(testData3$outcome, logPred3, threshold = opt3)
+  Specificity[i] <- specificity(testData3$outcome, logPred3, threshold = opt3)
+  Mis[i] <- misClassError(testData3$outcome, logPred3, threshold = opt3)
+
+}
+
+mean(Accuracy)
+mean(Sensitivity)
+mean(Specificity)
+mean(Mis)
+
+# print(Accuracy)
+# print(Sensitivity)
+# print(Specificity)
+# print(Mis)
+
+plot(Accuracy, pch = "❤", cex = 2, col = rainbow(15), main = '10-Fold Accuracy')   #pch = 16
+plot(Sensitivity, pch = "✈",  cex = 2, col = rainbow(15), main = '10-Fold Sensitivity')
+plot(Specificity, pch = "☺", cex = 2, col = rainbow(15), main = '10-Fold Specificity')
+plot(Mis, pch = "✌", cex = 2, col = rainbow(15), main = '10-FOld  MisClassification')
+
+```
+
+
+Imbalance Response 
+#https://www.r-bloggers.com/2021/05/class-imbalance-handling-imbalanced-data-in-r/
+#https://www.analyticsvidhya.com/blog/2016/03/practical-guide-deal-imbalanced-classification-problems/
+```{r}
+library(ROSE)
+
+#over sampling
+over <- ovun.sample(outcome ~., data = trainData, method = "over", N = 14594)$data
+table(over$outcome)
+
+logOver <-  glm(outcome ~., data = over, family = "binomial")
+logPredOver <- predict(logOver, newdata = testData, type = "response")
+opt <- optimalCutoff(testData$outcome, logPredOver) #optimal value = 0.5699
+
+logMisClass <- mean(logPredOver != testData$outcome)
+print(paste('Accuracy:', 1 - logMisClass))
+print(paste('Sensiticity (+):', sensitivity(testData$outcome, logPredOver, threshold = opt)))
+print(paste('Specificity (-):', specificity(testData$outcome, logPredOver, threshold = opt)))
+print(paste('Misclassification:', misClassError(testData$outcome, logPredOver, threshold = opt)))
+
+#under sampling
+under <- ovun.sample(outcome ~., data = trainData, method = "under", N = 582)$data
+table(under$outcome)
+
+logUnder <-  glm(outcome ~., data = under, family = "binomial")
+logPredUnder <- predict(logUnder, newdata = testData, type = "response")
+opt <- optimalCutoff(testData$outcome, logPredUnder) #optimal value = 0.5699
+
+sensitivity(testData$outcome, logPredUnder)
+specificity(testData$outcome, logPredUnder)
+misClassError(testData$outcome, logPredUnder, threshold = opt)
+
+#both
+both <- ovun.sample(outcome ~., data = trainData, method = "both", N = 7588)$data
+table(both$outcome)
+
+logBoth<-  glm(outcome ~., data = both, family = "binomial")
+logPredBoth <- predict(logBoth, newdata = testData, type = "response")
+opt <- optimalCutoff(testData$outcome, logPredBoth) #optimal value = 0.5699
+
+sensitivity(testData$outcome, logPredBoth)
+specificity(testData$outcome, logPredBoth)
+misClassError(testData$outcome, logPredBoth, threshold = opt)
+
+#ROSE
+rose <- ROSE(outcome ~., data = trainData)$data
+table(rose$outcome)
+
+logRose <-  glm(outcome ~., data = rose, family = "binomial")
+logPredRose <- predict(logRose, newdata = testData, type = "response")
+opt <- optimalCutoff(testData$outcome, logPredRose) #optimal value = 0.5699
+
+sensitivity(testData$outcome, logPredRose)
+specificity(testData$outcome, logPredRose)
+misClassError(testData$outcome, logPredRose, threshold = opt)
+
+
+```
+
+***Model 2: Ensemble Method, Random Forest ***
+
+
+Random Forest 2-Variables
+```{r}
+library(randomForest)
+
+#pull out response var
+yTrain <- trainData$outcome
+yTest <- testData$outcome
+
+#fit random forest model
+rf1 <- randomForest(outcome ~., data = trainData, importance = TRUE)
+
+#view var importance
+importance(rf1, type = 2) #larger vas = higher importance
+varImpPlot(rf1)
+
+
+
+```
+
